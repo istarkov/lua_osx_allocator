@@ -1,0 +1,62 @@
+diff --git a/src/lj_alloc.c b/src/lj_alloc.c
+index b381bba..181696a 100644
+--- a/src/lj_alloc.c
++++ b/src/lj_alloc.c
+@@ -23,6 +23,10 @@
+ #define lj_alloc_c
+ #define LUA_CORE
+ 
++//int ice_mmap();
++extern void* ice_alloc(unsigned size);
++extern void ice_free(void *ap);
++
+ /* To get the mremap prototype. Must be defined before any system includes. */
+ #if defined(__linux__) && !defined(_GNU_SOURCE)
+ #define _GNU_SOURCE
+@@ -182,7 +186,12 @@ static LJ_AINLINE int CALL_MUNMAP(void *ptr, size_t size)
+ /* Actually this only gives us max. 1GB in current Linux kernels. */
+ static LJ_AINLINE void *CALL_MMAP(size_t size)
+ {
++
+   int olderr = errno;
++  void* res = ice_alloc(size);
++  errno = olderr;
++  return res;
++
+   void *ptr = mmap(NULL, size, MMAP_PROT, MAP_32BIT|MMAP_FLAGS, -1, 0);
+   errno = olderr;
+   return ptr;
+@@ -206,9 +215,19 @@ static LJ_AINLINE void *CALL_MMAP(size_t size)
+ #include <sys/resource.h>
+ #endif
+ 
++
++
++
+ static LJ_AINLINE void *CALL_MMAP(size_t size)
+ {
+   int olderr = errno;
++
++  #if LJ_TARGET_OSX
++  void* res = ice_alloc(size);
++  errno = olderr;
++  return res;
++  #endif
++
+   /* Hint for next allocation. Doesn't need to be thread-safe. */
+   static uintptr_t alloc_hint = MMAP_REGION_START;
+   int retry = 0;
+@@ -267,6 +286,13 @@ static LJ_AINLINE void *CALL_MMAP(size_t size)
+ static LJ_AINLINE int CALL_MUNMAP(void *ptr, size_t size)
+ {
+   int olderr = errno;
++
++  //#if LJ_TARGET_OSX
++  ice_free(ptr);
++  errno = olderr;
++  return 0;
++  //#endif
++  
+   int ret = munmap(ptr, size);
+   errno = olderr;
+   return ret;
